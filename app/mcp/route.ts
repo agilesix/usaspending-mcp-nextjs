@@ -8,26 +8,23 @@
 import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 import { createUSASpendingClient } from "../../src/clients/usaspending";
-import { parseDateRange, parseNaturalDate, getFiscalYearRange } from "../../src/utils/dates";
 
 const handler = createMcpHandler(
 	async (server) => {
 		const client = createUSASpendingClient();
 
-		// Tool 1: Enhanced search for prior awards
+		// Tool 1: Search for federal contract awards
 		server.tool(
 			"search_awards",
-			"Search for federal contract awards using various criteria. Supports natural language dates like 'yesterday', 'last week', 'last 30 days', 'last month', 'last quarter', 'last year'. Use this to find digital services awards, specific contractors, or analyze spending patterns.",
+			"Search for federal contract awards. IMPORTANT: Date filtering searches for awards that had ANY transaction activity (modifications, obligations, payments) during the date range - NOT just new awards. This includes old awards with recent modifications. To find truly new awards, use the transaction endpoint or filter results by examining the award start dates.",
 			{
 				keywords: z.array(z.string()).optional().describe("Keywords to search in award descriptions (e.g., ['digital services', 'software development', 'agile'])"),
 				recipientName: z.string().optional().describe("Contractor/recipient name to search for (e.g., 'Agile Six', 'Oddball', 'GDIT')"),
 				agencyName: z.string().optional().describe("Awarding agency name (e.g., 'Department of Veterans Affairs', 'VA')"),
 				naicsCodes: z.array(z.string()).optional().describe("NAICS codes to filter by (e.g., ['541511'] for Custom Computer Programming, ['541512'] for Computer Systems Design)"),
 				pscCodes: z.array(z.string()).optional().describe("Product Service Codes to filter by (e.g., ['D307'] for IT/Telecom, ['D302'] for Systems Development)"),
-				dateRange: z.string().optional().describe("Natural language date range like 'yesterday', 'last week', 'last 30 days', 'last month', 'last quarter', 'last year', or use startDate/endDate for specific dates"),
-				startDate: z.string().optional().describe("Start date for award period. Can be YYYY-MM-DD format OR natural language like 'last month', '30 days ago', 'yesterday'. If provided without endDate, endDate defaults to today. Omit both dates to search all historical data."),
-				endDate: z.string().optional().describe("End date for award period in YYYY-MM-DD format or 'today'. If provided without startDate, startDate defaults to 1 year ago. Omit both dates to search all historical data."),
-				fiscalYear: z.number().optional().describe("Federal fiscal year (Oct 1 - Sep 30). Example: 2024 for FY2024 (Oct 1, 2023 - Sep 30, 2024)"),
+				activityStartDate: z.string().optional().describe("Start date in YYYY-MM-DD format for filtering by transaction activity. Searches for awards that had ANY financial activity (new awards, modifications, obligations) on or after this date. If provided without activityEndDate, defaults to searching through today. Omit both dates to search all historical awards."),
+				activityEndDate: z.string().optional().describe("End date in YYYY-MM-DD format for transaction activity. Searches for awards with activity on or before this date. If provided without activityStartDate, defaults to searching from 1 year ago. Omit both dates to search all historical awards."),
 				minAmount: z.number().optional().describe("Minimum award amount in dollars"),
 				maxAmount: z.number().optional().describe("Maximum award amount in dollars"),
 				state: z.string().optional().describe("State code for place of performance (e.g., 'VA', 'CA')"),
@@ -43,10 +40,8 @@ const handler = createMcpHandler(
 				agencyName,
 				naicsCodes,
 				pscCodes,
-				dateRange,
-				startDate,
-				endDate,
-				fiscalYear,
+				activityStartDate,
+				activityEndDate,
 				minAmount,
 				maxAmount,
 				state,
@@ -67,39 +62,18 @@ const handler = createMcpHandler(
 						filters.keywords = keywords;
 					}
 
-					// Handle dates with priority: fiscalYear > dateRange > startDate/endDate
-					if (fiscalYear) {
-						const fyRange = getFiscalYearRange(fiscalYear);
-						filters.time_period = [{
-							start_date: fyRange.start_date,
-							end_date: fyRange.end_date,
-						}];
-					} else if (dateRange) {
-						const range = parseDateRange(dateRange);
-						filters.time_period = [{
-							start_date: range.start_date,
-							end_date: range.end_date,
-						}];
-					} else if (startDate || endDate) {
-						// Parse natural language dates if provided
-						let start = startDate;
-						let end = endDate;
-
-						if (startDate) {
-							start = parseNaturalDate(startDate);
-						} else {
-							// Default to 1 year ago if endDate provided without startDate
+					// Handle date filtering for transaction activity
+					// NOTE: This searches for awards with ANY transaction activity in the date range,
+					// including modifications to old awards. It does NOT filter by original award date.
+					if (activityStartDate || activityEndDate) {
+						const start = activityStartDate || (() => {
+							// Default to 1 year ago if only endDate provided
 							const date = new Date();
 							date.setFullYear(date.getFullYear() - 1);
-							start = date.toISOString().split('T')[0];
-						}
+							return date.toISOString().split('T')[0];
+						})();
 
-						if (endDate) {
-							end = parseNaturalDate(endDate);
-						} else {
-							// Default to today if startDate provided without endDate
-							end = new Date().toISOString().split('T')[0];
-						}
+						const end = activityEndDate || new Date().toISOString().split('T')[0];
 
 						filters.time_period = [{
 							start_date: start,
@@ -237,8 +211,10 @@ const handler = createMcpHandler(
 											recipientId: award["recipient_id"],
 											awardingAgency: award["awarding_toptier_agency_name"],
 											awardingSubAgency: award["awarding_subtier_agency_name"],
-											startDate: award["Start Date"],
-											endDate: award["End Date"],
+											// Period of Performance dates - when the contract work is performed
+											// NOTE: These are NOT the award date or transaction dates!
+											performancePeriodStart: award["Start Date"],
+											performancePeriodEnd: award["End Date"],
 											contractType: award["Contract Award Type"],
 											naicsCode: award["NAICS Code"],
 											naicsDescription: award["NAICS Description"],
@@ -456,16 +432,15 @@ const handler = createMcpHandler(
 		// Tool 6: Get spending trends over time
 		server.tool(
 			"get_spending_over_time",
-			"Analyze spending trends over time for specific criteria. Great for understanding market trends, agency spending patterns, or how much money is flowing to certain types of work (e.g., 'digital services spending at VA over the last 3 years'). Returns time-series data grouped by fiscal year, quarter, or month.",
+			"Analyze spending trends over time for transaction activity. Returns time-series data grouped by fiscal year, quarter, or month. NOTE: Analyzes transaction activity (when money was obligated), not original award dates.",
 			{
 				keywords: z.array(z.string()).optional().describe("Keywords to search in award descriptions"),
 				recipientName: z.string().optional().describe("Contractor/recipient name to filter by"),
 				agencyName: z.string().optional().describe("Awarding agency name"),
 				naicsCodes: z.array(z.string()).optional().describe("NAICS codes to filter by"),
 				pscCodes: z.array(z.string()).optional().describe("Product Service Codes to filter by"),
-				dateRange: z.string().optional().describe("Natural language date range like 'last year', 'last 3 years', 'last quarter'"),
-				startDate: z.string().optional().describe("Start date (YYYY-MM-DD or natural language)"),
-				endDate: z.string().optional().describe("End date (YYYY-MM-DD or natural language)"),
+				activityStartDate: z.string().optional().describe("Start date in YYYY-MM-DD format for transaction activity period"),
+				activityEndDate: z.string().optional().describe("End date in YYYY-MM-DD format for transaction activity period"),
 				group: z.enum(['fiscal_year', 'quarter', 'month']).optional().describe("How to group the time series data (default: fiscal_year)"),
 			},
 			async ({
@@ -474,9 +449,8 @@ const handler = createMcpHandler(
 				agencyName,
 				naicsCodes,
 				pscCodes,
-				dateRange,
-				startDate,
-				endDate,
+				activityStartDate,
+				activityEndDate,
 				group,
 			}) => {
 				try {
@@ -509,16 +483,15 @@ const handler = createMcpHandler(
 						filters.psc_codes = pscCodes;
 					}
 
-					// Handle dates
-					if (dateRange) {
-						const range = parseDateRange(dateRange);
-						filters.time_period = [{
-							start_date: range.start_date,
-							end_date: range.end_date,
-						}];
-					} else if (startDate || endDate) {
-						const start = startDate ? parseNaturalDate(startDate) : new Date(new Date().setFullYear(new Date().getFullYear() - 1)).toISOString().split('T')[0];
-						const end = endDate ? parseNaturalDate(endDate) : new Date().toISOString().split('T')[0];
+					// Handle date filtering
+					if (activityStartDate || activityEndDate) {
+						const start = activityStartDate || (() => {
+							const date = new Date();
+							date.setFullYear(date.getFullYear() - 1);
+							return date.toISOString().split('T')[0];
+						})();
+						const end = activityEndDate || new Date().toISOString().split('T')[0];
+
 						filters.time_period = [{
 							start_date: start,
 							end_date: end,
@@ -562,15 +535,14 @@ const handler = createMcpHandler(
 		// Tool 7: Analyze competitive landscape for similar awards
 		server.tool(
 			"analyze_competition",
-			"Analyze the competitive landscape for a specific type of work. Shows who's winning awards, competition levels, and pricing trends. Perfect for understanding who the key players are in a market space (e.g., 'who are the top digital services contractors at VA?')",
+			"Analyze the competitive landscape based on transaction activity. Shows who's winning awards/modifications, market shares, and spending patterns. NOTE: Analyzes transaction activity, which includes both new awards and modifications to existing awards.",
 			{
 				keywords: z.array(z.string()).optional().describe("Keywords describing the type of work"),
 				agencyName: z.string().optional().describe("Agency to analyze"),
 				naicsCodes: z.array(z.string()).optional().describe("NAICS codes for the industry"),
 				pscCodes: z.array(z.string()).optional().describe("Product Service Codes"),
-				dateRange: z.string().optional().describe("Natural language date range (default: last year)"),
-				startDate: z.string().optional().describe("Start date"),
-				endDate: z.string().optional().describe("End date"),
+				activityStartDate: z.string().optional().describe("Start date in YYYY-MM-DD format for transaction activity (defaults to 1 year ago if not provided)"),
+				activityEndDate: z.string().optional().describe("End date in YYYY-MM-DD format for transaction activity (defaults to today if not provided)"),
 				minAmount: z.number().optional().describe("Minimum award size to analyze"),
 				limit: z.number().min(1).max(100).optional().describe("Number of top recipients to show (default: 20)"),
 			},
@@ -579,9 +551,8 @@ const handler = createMcpHandler(
 				agencyName,
 				naicsCodes,
 				pscCodes,
-				dateRange,
-				startDate,
-				endDate,
+				activityStartDate,
+				activityEndDate,
 				minAmount,
 				limit,
 			}) => {
@@ -617,28 +588,18 @@ const handler = createMcpHandler(
 						}];
 					}
 
-					// Default to last year if no dates provided
-					if (dateRange) {
-						const range = parseDateRange(dateRange);
-						filters.time_period = [{
-							start_date: range.start_date,
-							end_date: range.end_date,
-						}];
-					} else if (startDate || endDate) {
-						const start = startDate ? parseNaturalDate(startDate) : new Date(new Date().setFullYear(new Date().getFullYear() - 1)).toISOString().split('T')[0];
-						const end = endDate ? parseNaturalDate(endDate) : new Date().toISOString().split('T')[0];
-						filters.time_period = [{
-							start_date: start,
-							end_date: end,
-						}];
-					} else {
-						// Default to last year
-						const range = parseDateRange('last year');
-						filters.time_period = [{
-							start_date: range.start_date,
-							end_date: range.end_date,
-						}];
-					}
+					// Handle date filtering - default to last year if no dates provided
+					const start = activityStartDate || (() => {
+						const date = new Date();
+						date.setFullYear(date.getFullYear() - 1);
+						return date.toISOString().split('T')[0];
+					})();
+					const end = activityEndDate || new Date().toISOString().split('T')[0];
+
+					filters.time_period = [{
+						start_date: start,
+						end_date: end,
+					}];
 
 					// Get awards and aggregate by recipient
 					const searchParams: any = {
