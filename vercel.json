@@ -1,0 +1,8 @@
+{
+	"functions": {
+		"app/mcp/route.ts": {
+			"memory": 1024,
+			"maxDuration": 300
+		}
+	}
+}
