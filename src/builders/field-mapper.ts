@@ -46,6 +46,7 @@ export const AWARD_FIELDS = [
 
 /**
  * Field names for spending_by_transaction endpoint
+ * Note: This endpoint uses different field name formats than spending_by_award
  */
 export const TRANSACTION_FIELDS = [
 	"Award ID",
@@ -56,10 +57,10 @@ export const TRANSACTION_FIELDS = [
 	"awarding_subtier_agency_name",
 	"Description",
 	"Modification Number",
-	"NAICS Code",
-	"NAICS Description",
-	"Product or Service Code",
-	"Product or Service Code Description",
+	"naics_code",
+	"naics_description",
+	"product_or_service_code",
+	"product_or_service_code_description",
 ];
 
 /**
@@ -125,10 +126,10 @@ export function transformTransactionResult(tx: any) {
 		recipientName: tx["Recipient Name"],
 		awardingAgency: tx["awarding_toptier_agency_name"],
 		awardingSubAgency: tx["awarding_subtier_agency_name"],
-		naicsCode: tx["NAICS Code"],
-		naicsDescription: tx["NAICS Description"],
-		pscCode: tx["Product or Service Code"],
-		pscDescription: tx["Product or Service Code Description"],
+		naicsCode: tx["naics_code"],
+		naicsDescription: tx["naics_description"],
+		pscCode: tx["product_or_service_code"],
+		pscDescription: tx["product_or_service_code_description"],
 	};
 }
 
