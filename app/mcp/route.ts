@@ -8,15 +8,18 @@
 import { createMcpHandler } from "mcp-handler";
 import { createUSASpendingClient } from "../../src/clients/usaspending";
 import { registerAllTools } from "../../src/tools";
+import { registerAllPrompts } from "../../src/prompts";
 
 const handler = createMcpHandler(
 	async (server) => {
 		const client = createUSASpendingClient();
 		registerAllTools(server, client);
+		registerAllPrompts(server, client);
 	},
 	{
 		capabilities: {
 			tools: {},
+			prompts: {},
 		},
 	},
 	{
