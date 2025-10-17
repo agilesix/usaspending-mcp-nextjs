@@ -6,13 +6,13 @@
 import { z } from 'zod';
 import type { USASpendingClient } from '../clients/usaspending';
 import { buildAwardFilters } from '../builders/filter-builder';
-import { AWARD_FIELDS, transformAwardResult } from '../builders/field-mapper';
+import { AWARD_FIELDS, TRANSACTION_FIELDS, transformAwardResult, transformTransactionResult } from '../builders/field-mapper';
 import type { SearchAwardsParams } from '../types/tool-params';
 
 export function registerSearchAwardsTool(server: any, client: USASpendingClient) {
 	server.tool(
 		"search_awards",
-		"Search for federal contract awards. IMPORTANT: Date filtering searches for awards that had ANY transaction activity (modifications, obligations, payments) during the date range - NOT just new awards. This includes old awards with recent modifications. To find truly new awards, use the transaction endpoint or filter results by examining the award start dates.",
+		"Search for federal contract awards. By default, date filtering searches for awards with ANY transaction activity (modifications, obligations, payments) during the date range. To find truly NEW awards signed on a specific date, set searchNewAwardsOnly=true and provide activityStartDate/activityEndDate for the award signing dates.",
 		{
 			keywords: z.array(z.string()).optional().describe("Keywords to search in award descriptions (e.g., ['digital services', 'software development', 'agile'])"),
 			recipientName: z.string().optional().describe("Contractor/recipient name to search for (e.g., 'Agile Six', 'Oddball', 'GDIT')"),
@@ -29,6 +29,7 @@ export function registerSearchAwardsTool(server: any, client: USASpendingClient)
 			extentCompeted: z.array(z.string()).optional().describe("Competition codes: 'A' for Full and Open Competition, 'D' for Full and Open After Exclusion of Sources, 'E' for Follow On to Competed Action, 'CDO' for Competitive Delivery Order"),
 			contractPricingTypes: z.array(z.string()).optional().describe("Pricing type codes (e.g., 'FFPF' for Firm Fixed Price, 'TM' for Time and Materials, 'CPFF' for Cost Plus Fixed Fee)"),
 			limit: z.number().min(1).max(100).optional().describe("Number of results to return (max 100, default 10)"),
+			searchNewAwardsOnly: z.boolean().optional().describe("Set to true to search for awards by their actual award date (Action Date). When true, only returns base awards (not modifications) signed during the date range. When false (default), returns all awards with any transaction activity during the date range."),
 		},
 		async (params: SearchAwardsParams) => {
 			try {
@@ -50,6 +51,46 @@ export function registerSearchAwardsTool(server: any, client: USASpendingClient)
 					contractPricingTypes: params.contractPricingTypes,
 				});
 
+				// Determine if we should search for new awards only (by action date)
+				if (params.searchNewAwardsOnly) {
+					// Use transaction endpoint to search by action date
+					const searchParams: any = {
+						filters,
+						fields: TRANSACTION_FIELDS,
+						limit: params.limit || 10,
+						page: 1,
+						sort: "Transaction Amount",
+						order: "desc" as const,
+					};
+
+					const result = await client.searchTransactions(searchParams);
+
+					// Filter for base awards only (Modification Number = "0")
+					const baseAwardsOnly = result.results?.filter((tx: any) =>
+						String(tx["Modification Number"] || "").trim() === "0"
+					) || [];
+
+					const summary = `Found ${baseAwardsOnly.length} new awards (filtered from ${result.results?.length || 0} transactions)`;
+
+					return {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify(
+									{
+										summary,
+										total: baseAwardsOnly.length,
+										awards: baseAwardsOnly.map(transformTransactionResult),
+									},
+									null,
+									2
+								),
+							},
+						],
+					};
+				}
+
+				// Default behavior: search for awards with any activity
 				const searchParams: any = {
 					filters,
 					fields: AWARD_FIELDS,

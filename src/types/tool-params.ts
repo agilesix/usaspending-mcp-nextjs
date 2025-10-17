@@ -18,20 +18,7 @@ export interface SearchAwardsParams {
 	extentCompeted?: string[];
 	contractPricingTypes?: string[];
 	limit?: number;
-}
-
-export interface SearchTransactionsParams {
-	actionStartDate: string;
-	actionEndDate?: string;
-	keywords?: string[];
-	recipientName?: string;
-	agencyName?: string;
-	naicsCodes?: string[];
-	pscCodes?: string[];
-	minAmount?: number;
-	maxAmount?: number;
-	awardTypeCodes?: string[];
-	limit?: number;
+	searchNewAwardsOnly?: boolean;
 }
 
 export interface GetSpendingOverTimeParams {

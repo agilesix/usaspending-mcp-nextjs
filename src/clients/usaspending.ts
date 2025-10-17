@@ -361,6 +361,61 @@ export class USASpendingClient {
 	}
 
 	/**
+	 * Search for transactions by action date
+	 * Endpoint: /api/v2/search/spending_by_transaction/
+	 */
+	async searchTransactions(params: Partial<AwardSearchParams>): Promise<AwardsSearchResponse> {
+		const url = `${this.baseUrl}/search/spending_by_transaction/`;
+
+		try {
+			const response = await this.fetchWithRetry(url, {
+				method: 'POST',
+				headers: {
+					'Accept': 'application/json',
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(params),
+			});
+
+			if (!response.ok) {
+				const errorText = await response.text();
+				let errorData: ApiError;
+
+				try {
+					errorData = JSON.parse(errorText);
+				} catch {
+					errorData = {
+						detail: errorText || response.statusText,
+					};
+				}
+
+				console.error(`[USASpending] searchTransactions API returned error status ${response.status}:`, {
+					status: response.status,
+					statusText: response.statusText,
+					errorText: errorText.substring(0, 500),
+					errorData: errorData,
+					url: url,
+					requestBody: JSON.stringify(params).substring(0, 500)
+				});
+
+				throw new Error(
+					`USASpending API error (${response.status}): ${errorData.detail}`
+				);
+			}
+
+			const data = await response.json() as AwardsSearchResponse;
+			console.log(`[USASpending] searchTransactions successful, got ${data.results?.length || 0} results`);
+			return data;
+		} catch (error) {
+			console.error('[USASpending] searchTransactions caught error:', error);
+			if (error instanceof Error) {
+				throw error;
+			}
+			throw new Error('Unknown error occurred while fetching transactions');
+		}
+	}
+
+	/**
 	 * Get awards over time for trend analysis
 	 * Endpoint: /api/v2/search/spending_over_time/
 	 */
