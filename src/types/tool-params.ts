@@ -18,7 +18,6 @@ export interface SearchAwardsParams {
 	extentCompeted?: string[];
 	contractPricingTypes?: string[];
 	limit?: number;
-	searchNewAwardsOnly?: boolean;
 }
 
 export interface GetSpendingOverTimeParams {

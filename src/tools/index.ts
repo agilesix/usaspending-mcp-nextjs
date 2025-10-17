@@ -5,6 +5,7 @@
 
 import type { USASpendingClient } from '../clients/usaspending';
 import { registerSearchAwardsTool } from './search-awards';
+import { registerSearchNewAwardsTool } from './search-new-awards';
 import { registerGetAwardDetailsTool } from './get-award-details';
 import { registerSearchRecipientsTool } from './search-recipients';
 import { registerGetRecipientDetailsTool } from './get-recipient-details';
@@ -17,6 +18,7 @@ import { registerAnalyzeCompetitionTool } from './analyze-competition';
  */
 export function registerAllTools(server: any, client: USASpendingClient) {
 	registerSearchAwardsTool(server, client);
+	registerSearchNewAwardsTool(server, client);
 	registerGetAwardDetailsTool(server, client);
 	registerSearchRecipientsTool(server, client);
 	registerGetRecipientDetailsTool(server, client);
