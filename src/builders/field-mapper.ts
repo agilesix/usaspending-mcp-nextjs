@@ -47,20 +47,24 @@ export const AWARD_FIELDS = [
 /**
  * Field names for spending_by_transaction endpoint
  * Note: This endpoint uses different field name formats than spending_by_award
+ * Verified via API: https://api.usaspending.gov/api/v2/search/spending_by_transaction/
  */
 export const TRANSACTION_FIELDS = [
 	"Award ID",
 	"Recipient Name",
 	"Action Date",
 	"Transaction Amount",
-	"awarding_toptier_agency_name",
-	"awarding_subtier_agency_name",
-	"Description",
-	"Modification Number",
+	"Awarding Agency",
+	"Awarding Sub Agency",
+	"Transaction Description",
+	"Mod",
 	"naics_code",
 	"naics_description",
 	"product_or_service_code",
-	"product_or_service_code_description",
+	"product_or_service_description",
+	"Recipient UEI",
+	"recipient_id",
+	"generated_internal_id",
 ];
 
 /**
@@ -121,15 +125,17 @@ export function transformTransactionResult(tx: any) {
 		internalId: tx.generated_internal_id,
 		actionDate: tx["Action Date"],
 		transactionAmount: tx["Transaction Amount"],
-		modificationNumber: tx["Modification Number"],
-		description: tx["Description"],
+		modificationNumber: tx["Mod"],
+		description: tx["Transaction Description"],
 		recipientName: tx["Recipient Name"],
-		awardingAgency: tx["awarding_toptier_agency_name"],
-		awardingSubAgency: tx["awarding_subtier_agency_name"],
+		recipientUei: tx["Recipient UEI"],
+		recipientId: tx["recipient_id"],
+		awardingAgency: tx["Awarding Agency"],
+		awardingSubAgency: tx["Awarding Sub Agency"],
 		naicsCode: tx["naics_code"],
 		naicsDescription: tx["naics_description"],
 		pscCode: tx["product_or_service_code"],
-		pscDescription: tx["product_or_service_code_description"],
+		pscDescription: tx["product_or_service_description"],
 	};
 }
 
