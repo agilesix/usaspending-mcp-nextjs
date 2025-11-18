@@ -47,10 +47,10 @@ Keep it tight—this is a daily update, not a strategy document. Avoid repetitiv
 ### Step 1: Find Recent Awards
 
 Search for new contract awards using \`search_new_awards\`:
-- Start with yesterday's date (single day)
+- Start with the target date specified below (single day)
 - If no results, search one day at a time going back (max 7 days)
 - **Use these parameters:**
-  - \`minAmount: 250000\` (filters out commodity IT)
+  - \`minAmount\`: Use the value specified in "Target Date for Analysis" section below
   - \`limit: 100\` (ensures you don't miss awards)
   - \`naicsCodes: ["541511", "541512", "541513", "541519", "541611", "611420", "611430"]\`
 
@@ -136,14 +136,18 @@ export function registerDailyCompetitiveBriefPrompt(server: any) {
 		"Generate a daily intelligence brief on federal contract awards for Agile Six Applications. Analyzes recent awards from competitors, identifies market trends, and surfaces strategic opportunities.",
 		{
 			date: z.string().optional().describe("Target date in YYYY-MM-DD format. Defaults to yesterday if not provided."),
+			minAmount: z.string().optional().describe("Minimum contract amount in dollars to filter awards. Defaults to $250,000 to filter out commodity IT purchases. Can be specified as a number (e.g., '1000000' for $1M)."),
 		},
-		async (args: { date?: string }) => {
+		async (args: { date?: string; minAmount?: string }) => {
 			// Calculate default date (yesterday)
 			const targetDate = args.date || (() => {
 				const yesterday = new Date();
 				yesterday.setDate(yesterday.getDate() - 1);
 				return yesterday.toISOString().split('T')[0];
 			})();
+
+			// Parse and default minimum amount to $250,000
+			const minAmount = args.minAmount ? parseInt(args.minAmount, 10) : 250000;
 
 			// Construct the prompt message with the target date context
 			const promptText = `${PROMPT_CONTENT}
@@ -153,6 +157,7 @@ export function registerDailyCompetitiveBriefPrompt(server: any) {
 ## Target Date for Analysis
 
 **Date:** ${targetDate}
+**Minimum Award Amount:** $${minAmount.toLocaleString()} (use this value for the \`minAmount\` parameter in search_new_awards)
 
 Please generate the daily competitive brief for this date. If no awards are found for this specific date, search back up to 7 days as described in the research process.`;
 
